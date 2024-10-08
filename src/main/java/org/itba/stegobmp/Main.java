@@ -4,6 +4,7 @@ import org.apache.commons.cli.*;
 import org.itba.stegobmp.Embedders.LSB;
 
 import java.io.IOException;
+import java.util.HashMap;
 
 public class Main {
 
@@ -33,11 +34,16 @@ public class Main {
             String mode = cmd.getOptionValue("m", "ccb");
             String pass = cmd.getOptionValue("pass");
 
+            HashMap<String, Integer> LSBtypes = new HashMap<>();
+            LSBtypes.put("LSB1", 1);
+            LSBtypes.put("LSB4", 4);
+            LSB lsb = LSB.buildLSB(LSBtypes.get(stegAlgo));
+
             if (cmd.hasOption("embed")) {
-                    LSB.embed(inputFile, carrierFile, outputFile);
+                lsb.embed(inputFile, carrierFile, outputFile);
             } else if (cmd.hasOption("extract")) {
                 try {
-                    LSB.extract(carrierFile, outputFile);
+                    lsb.extract(carrierFile, outputFile);
                 } catch (Exception e) {
                     System.err.println("Error extracting information: " + e.getMessage());
                 }
