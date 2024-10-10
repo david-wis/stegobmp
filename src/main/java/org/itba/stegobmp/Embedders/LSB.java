@@ -4,13 +4,14 @@ import org.itba.stegobmp.BmpStream;
 
 import java.io.*;
 import java.util.Iterator;
+import java.util.function.Predicate;
 
 public class LSB {
-    private final int n, mask, bitsLen;
+    private final int n, mask, carrierPerInput;
     private static final int LENGTH_LENGTH = 32;
     private LSB(int n) {
         this.n = n;
-        this.bitsLen = 8 / n;
+        this.carrierPerInput = 8 / n;
         this.mask = (1<<(n)) - 1;
     }
 
@@ -48,10 +49,11 @@ public class LSB {
         }
 
         // the input message will be length || message || extension
-        byte[] inputMessage = new byte[4 + inputLen + fileExtensionBytes.length];
+        byte[] inputMessage = new byte[4 + inputLen + fileExtensionBytes.length + 1];
         System.arraycopy(inputLenBytes, 0, inputMessage, 0, 4);
         System.arraycopy(inputBytes, 0, inputMessage, 4, inputLen);
         System.arraycopy(fileExtensionBytes, 0, inputMessage, 4 + inputLen, fileExtensionBytes.length);
+        inputMessage[inputMessage.length - 1] = 0;
 
         output.write(carrier.getHeader(), 0, 54);
 
@@ -61,7 +63,7 @@ public class LSB {
 
             @Override
             public boolean hasNext() {
-                return pos < inputMessage.length * bitsLen;
+                return pos < inputMessage.length * carrierPerInput;
             }
 
             @Override
@@ -89,31 +91,41 @@ public class LSB {
         output.close();
     }
 
+    private void readBytes(byte[] bmpBytes, int limit, int offset, byte[] writeBuffer) {
+        readBytes(bmpBytes, i -> i < limit, offset, writeBuffer);
+    }
+
+    private int readBytes(byte[] bmpBytes, Predicate<Integer> loopCondition, int offset, byte[] writeBuffer) {
+        int i;
+        for (i = 0; loopCondition.test(i); i++) {
+            int b = 0x0;
+            for (int j = 0; j < carrierPerInput; j++){
+                b |= (bmpBytes[offset + i * carrierPerInput + j] & mask) << (n * (carrierPerInput -j-1));
+            }
+            writeBuffer[i] = (byte) b;
+        }
+        return i;
+    }
+
     public void extract(String bitmapFile, String outputFile) throws IOException {
         BmpStream bmpStream = new BmpStream(bitmapFile);
-        OutputStream output = new FileOutputStream(outputFile);
 
         byte[] bmpBytes = bmpStream.readAllBytes();
         byte[] inputLenBytes = new byte[4];
 
-        for (int i = 0; i < 4; i++) {
-            int b = 0x0;
-            for (int j = 0; j < bitsLen; j++){
-                b |= (bmpBytes[i * bitsLen + j] & mask) << (n * (bitsLen-j-1));
-            }
-            inputLenBytes[i] = (byte) b;
-        }
+        readBytes(bmpBytes, 4, 0, inputLenBytes);
 
         int inputLen = ((inputLenBytes[0] & 0xFF) << 24) | ((inputLenBytes[1] & 0xFF) << 16) | ((inputLenBytes[2] & 0xFF) << 8) | (inputLenBytes[3] & 0xFF);
         System.out.println("inputLen " + inputLen);
         byte[] inputMessage = new byte[inputLen];
-        for (int i = 0; i < inputLen; i++) {
-            int b = 0x0;
-            for (int j = 0; j < bitsLen; j++){
-                b |= (bmpBytes[LENGTH_LENGTH / n + i * bitsLen + j] & mask) << (n * (bitsLen-j-1));
-            }
-            inputMessage[i] = (byte) b;
-        }
+        readBytes(bmpBytes, inputLen, LENGTH_LENGTH / n, inputMessage);
+
+        byte[] extension = new byte[255];
+        int extensionLen = readBytes(bmpBytes, i -> i == 0 || extension[i-1] != 0, LENGTH_LENGTH / n + inputLen * carrierPerInput, extension) - 1;
+
+        String extensionStr = new String(extension, 0, extensionLen);
+        System.out.println(outputFile + extensionStr);
+        OutputStream output = new FileOutputStream(outputFile + extensionStr);
         output.write(inputMessage);
         output.close();
         bmpStream.close();
