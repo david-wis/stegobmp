@@ -2,6 +2,8 @@ package org.itba.stegobmp;
 
 import org.apache.commons.cli.*;
 import org.itba.stegobmp.Embedders.LSB;
+import org.itba.stegobmp.Embedders.LSBI;
+import org.itba.stegobmp.Embedders.StegoAlgorithm;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -34,16 +36,18 @@ public class Main {
             String mode = cmd.getOptionValue("m", "ccb");
             String pass = cmd.getOptionValue("pass");
 
-            HashMap<String, Integer> LSBtypes = new HashMap<>();
-            LSBtypes.put("LSB1", 1);
-            LSBtypes.put("LSB4", 4);
-            LSB lsb = LSB.buildLSB(LSBtypes.get(stegAlgo));
+            StegoAlgorithm stegoAlgorithm = switch (stegAlgo) {
+                case "LSB1" -> new LSB(1, -1);
+                case "LSB4" -> new LSB(4, -1);
+                case "LSBI" -> new LSBI();
+                default -> throw new IllegalArgumentException("Invalid steganography algorithm");
+            };
 
             if (cmd.hasOption("embed")) {
-                lsb.embed(inputFile, carrierFile, outputFile);
+                stegoAlgorithm.embedInFile(inputFile, carrierFile, outputFile);
             } else if (cmd.hasOption("extract")) {
                 try {
-                    lsb.extract(carrierFile, outputFile);
+                    stegoAlgorithm.extract(carrierFile, outputFile);
                 } catch (Exception e) {
                     System.err.println("Error extracting information: " + e.getMessage());
                 }

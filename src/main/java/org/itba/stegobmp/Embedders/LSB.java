@@ -6,29 +6,40 @@ import java.io.*;
 import java.util.Iterator;
 import java.util.function.Predicate;
 
-public class LSB {
-    private final int n, mask, carrierPerInput;
+public class LSB implements StegoAlgorithm {
     private static final int LENGTH_LENGTH = 32;
-    private LSB(int n) {
+    private final int n, mask, carrierPerInput, skipN;
+    public LSB(int n, int skipN) {
+        if (n != 1 && n != 4) throw new IllegalArgumentException("n must be 1 or 4");
         this.n = n;
         this.carrierPerInput = 8 / n;
         this.mask = (1<<(n)) - 1;
+        if (skipN < -1 || skipN > 2) throw new IllegalArgumentException("SkipN must be between 0 and 2 or -1");
+        this.skipN = skipN;
     }
 
-    public static LSB buildLSB(int n) {
-        if (n != 1 && n != 4) return null;
-        return new LSB(n);
-    }
-
-
-    public void embed(String inputFile, String carrierFile, String outputFile) throws IOException {
+    @Override
+    public void embedInFile(String inputFile, String carrierFile, String outputFile) throws IOException {
         InputStream input = LSB.class.getClassLoader().getResourceAsStream(inputFile);
+        String fileExtension = inputFile.substring(inputFile.lastIndexOf('.'));
+        byte[] inputBytes = input.readAllBytes();
 
         BmpStream carrier = new BmpStream(carrierFile);
-        OutputStream output = new FileOutputStream(outputFile);
 
-        // read all bytes and add '\0' at the end
-        byte[] inputBytes = input.readAllBytes();
+        byte[] result = embed(inputBytes, fileExtension, carrier, null);
+        input.close();
+        carrier.close();
+
+        OutputStream output = new FileOutputStream(outputFile);
+        output.write(carrier.getHeader(), 0, 54);
+        output.write(result);
+        output.close();
+    }
+
+    public byte[] embed(byte[] inputBytes, String fileExtension, BmpStream carrier, int[] stats) throws IOException {
+        if (stats != null && stats.length != 4) {
+            throw new IllegalArgumentException("Stats must be an array of length 4");
+        }
 
         int inputLen = inputBytes.length;
 
@@ -39,8 +50,7 @@ public class LSB {
         inputLenBytes[2] = (byte) (inputLen >> 8);
         inputLenBytes[3] = (byte) inputLen;
 
-        String fileExtension = inputFile.substring(inputFile.lastIndexOf('.'));
-        byte[] fileExtensionBytes = fileExtension.getBytes(); // TODO: Check that the \0 is included
+        byte[] fileExtensionBytes = fileExtension.getBytes();
 
         byte[] carrierBytes = carrier.readAllBytes();
 
@@ -55,12 +65,8 @@ public class LSB {
         System.arraycopy(fileExtensionBytes, 0, inputMessage, 4 + inputLen, fileExtensionBytes.length);
         inputMessage[inputMessage.length - 1] = 0;
 
-        output.write(carrier.getHeader(), 0, 54);
-
-
         Iterator<Integer> bitIterator = new Iterator<>() {
             int pos = 0;
-
             @Override
             public boolean hasNext() {
                 return pos < inputMessage.length * carrierPerInput;
@@ -68,28 +74,32 @@ public class LSB {
 
             @Override
             public Integer next() {
-                Integer bitString;
-                if (n == 1) {
+                int bitString;
+                if (n == 1)
                    bitString = ((inputMessage[pos / 8] >> (7 - pos % 8)) & mask);
-                } else {
+                else
                     bitString = ((inputMessage[pos / 2] >> (4 * ((pos+1) % 2))) & mask);
-                }
                 pos++;
                 return bitString;
             }
         };
 
         for (int i = 0; i < carrierBytes.length; i++) {
+            if (skipN != -1 && i % 3 == skipN) continue;
+
             if (bitIterator.hasNext()) {
-                carrierBytes[i] = (byte) ((carrierBytes[i] & ~mask) | bitIterator.next());
+                int bit = bitIterator.next();
+                if (stats != null) {
+                    int group = (carrierBytes[i] & 0b00000110) >> 1;
+                    stats[group] += (carrierBytes[i] & mask) != bit ? 1 : -1;
+                }
+                carrierBytes[i] = (byte) ((carrierBytes[i] & ~mask) | bit);
             }
         }
-        output.write(carrierBytes);
-
-        input.close();
-        carrier.close();
-        output.close();
+        return carrierBytes;
     }
+
+
 
     private void readBytes(byte[] bmpBytes, int limit, int offset, byte[] writeBuffer) {
         readBytes(bmpBytes, i -> i < limit, offset, writeBuffer);
@@ -107,6 +117,7 @@ public class LSB {
         return i;
     }
 
+    @Override
     public void extract(String bitmapFile, String outputFile) throws IOException {
         BmpStream bmpStream = new BmpStream(bitmapFile);
 
@@ -130,6 +141,5 @@ public class LSB {
         output.close();
         bmpStream.close();
     }
-
 
 }
