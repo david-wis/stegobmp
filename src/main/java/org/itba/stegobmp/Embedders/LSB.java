@@ -1,25 +1,37 @@
 package org.itba.stegobmp.Embedders;
 
 import org.itba.stegobmp.BmpStream;
+import org.itba.stegobmp.Encryption.Encrypter;
+import org.itba.stegobmp.StegoUtils;
 
+import javax.crypto.BadPaddingException;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
 import java.io.*;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.security.spec.InvalidKeySpecException;
 import java.util.Iterator;
 import java.util.function.Predicate;
 
 public class LSB implements StegoAlgorithm {
     private static final int LENGTH_LENGTH = 32;
     private final int n, mask, carrierPerInput, skipN;
-    public LSB(int n, int skipN) {
+    private final Encrypter encrypter;
+
+    public LSB(int n, int skipN, Encrypter encrypter) {
         if (n != 1 && n != 4) throw new IllegalArgumentException("n must be 1 or 4");
         this.n = n;
         this.carrierPerInput = 8 / n;
         this.mask = (1<<(n)) - 1;
         if (skipN < -1 || skipN > 2) throw new IllegalArgumentException("SkipN must be between 0 and 2 or -1");
         this.skipN = skipN;
+        this.encrypter = encrypter;
     }
 
     @Override
-    public void embedInFile(String inputFile, String carrierFile, String outputFile) throws IOException {
+    public void embedInFile(String inputFile, String carrierFile, String outputFile) throws IOException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, InvalidKeySpecException, InvalidKeyException {
         InputStream input = LSB.class.getClassLoader().getResourceAsStream(inputFile);
         String fileExtension = inputFile.substring(inputFile.lastIndexOf('.'));
         byte[] inputBytes = input.readAllBytes();
@@ -36,34 +48,29 @@ public class LSB implements StegoAlgorithm {
         output.close();
     }
 
-    public byte[] embed(byte[] inputBytes, String fileExtension, BmpStream carrier, int[] stats) throws IOException {
+    public byte[] embed(byte[] inputBytes, String fileExtension, BmpStream carrier, int[] stats) throws IOException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, InvalidKeySpecException, InvalidKeyException {
         if (stats != null && stats.length != 4) {
             throw new IllegalArgumentException("Stats must be an array of length 4");
         }
 
         int inputLen = inputBytes.length;
 
-        byte[] inputLenBytes = new byte[4];
-
-        inputLenBytes[0] = (byte) (inputLen >> 24);
-        inputLenBytes[1] = (byte) (inputLen >> 16);
-        inputLenBytes[2] = (byte) (inputLen >> 8);
-        inputLenBytes[3] = (byte) inputLen;
-
+        byte[] inputLenBytes = StegoUtils.toByteArray(inputLen);
         byte[] fileExtensionBytes = fileExtension.getBytes();
-
         byte[] carrierBytes = carrier.readAllBytes();
 
         if (inputLen + 4 + fileExtensionBytes.length > carrierBytes.length/8) {
-            throw new RuntimeException("Input message is too long for the carrier");
+            throw new RuntimeException("Input message is too long for the carrier");// TODO: Change for LSB4 and LSBI?
         }
 
         // the input message will be length || message || extension
-        byte[] inputMessage = new byte[4 + inputLen + fileExtensionBytes.length + 1];
-        System.arraycopy(inputLenBytes, 0, inputMessage, 0, 4);
-        System.arraycopy(inputBytes, 0, inputMessage, 4, inputLen);
-        System.arraycopy(fileExtensionBytes, 0, inputMessage, 4 + inputLen, fileExtensionBytes.length);
-        inputMessage[inputMessage.length - 1] = 0;
+        byte[] rawInputMessage = new byte[4 + inputLen + fileExtensionBytes.length + 1];
+        System.arraycopy(inputLenBytes, 0, rawInputMessage, 0, 4);
+        System.arraycopy(inputBytes, 0, rawInputMessage, 4, inputLen);
+        System.arraycopy(fileExtensionBytes, 0, rawInputMessage, 4 + inputLen, fileExtensionBytes.length);
+        rawInputMessage[rawInputMessage.length - 1] = 0;
+
+        byte[] inputMessage = encrypter.encrypt(rawInputMessage);
 
         Iterator<Integer> bitIterator = new Iterator<>() {
             int pos = 0;
@@ -117,6 +124,7 @@ public class LSB implements StegoAlgorithm {
         return i;
     }
 
+    // Not used in LSBI, only for LSB1 and LSB4
     @Override
     public void extract(String bitmapFile, String outputFile) throws IOException {
         BmpStream bmpStream = new BmpStream(bitmapFile);
@@ -131,12 +139,14 @@ public class LSB implements StegoAlgorithm {
         byte[] inputMessage = new byte[inputLen];
         readBytes(bmpBytes, inputLen, LENGTH_LENGTH / n, inputMessage);
 
+        
         byte[] extension = new byte[255];
         int extensionLen = readBytes(bmpBytes, i -> i == 0 || extension[i-1] != 0, LENGTH_LENGTH / n + inputLen * carrierPerInput, extension) - 1;
 
         String extensionStr = new String(extension, 0, extensionLen);
         System.out.println(outputFile + extensionStr);
         OutputStream output = new FileOutputStream(outputFile + extensionStr);
+
         output.write(inputMessage);
         output.close();
         bmpStream.close();

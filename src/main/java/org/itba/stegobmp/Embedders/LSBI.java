@@ -1,26 +1,40 @@
 package org.itba.stegobmp.Embedders;
 
 import org.itba.stegobmp.BmpStream;
+import org.itba.stegobmp.Encryption.Encrypter;
 
+import javax.crypto.BadPaddingException;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.security.spec.InvalidKeySpecException;
 import java.util.function.Predicate;
 
 public class LSBI implements StegoAlgorithm {
 
     private static final int LENGTH_LENGTH = 32;
 
+    private final Encrypter encrypter;
+
+    public LSBI(Encrypter encrypter) {
+        this.encrypter = encrypter;
+    }
+
     @Override
-    public void embedInFile(String inputFile, String carrierFile, String outputFile) throws IOException {
+    public void embedInFile(String inputFile, String carrierFile, String outputFile) throws IOException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, InvalidKeySpecException, InvalidKeyException {
         InputStream input = LSB.class.getClassLoader().getResourceAsStream(inputFile);
         String fileExtension = inputFile.substring(inputFile.lastIndexOf('.'));
         byte[] inputBytes = input.readAllBytes();
 
         BmpStream carrier = new BmpStream(carrierFile);
 
-        LSB lsb = new LSB(1, 1); // Red channels get out of phase
+        LSB lsb = new LSB(1, 1, encrypter); // Red channels get out of phase
         int[] stats = {0, 0, 0, 0};
 
         byte[] firstBytes = new byte[stats.length];

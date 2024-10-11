@@ -4,6 +4,7 @@ import org.apache.commons.cli.*;
 import org.itba.stegobmp.Embedders.LSB;
 import org.itba.stegobmp.Embedders.LSBI;
 import org.itba.stegobmp.Embedders.StegoAlgorithm;
+import org.itba.stegobmp.Encryption.*;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -33,13 +34,29 @@ public class Main {
             System.out.println("Steganography algorithm: " + stegAlgo);
 
             String alg = cmd.getOptionValue("a", "aes128");
-            String mode = cmd.getOptionValue("m", "ccb");
+            String mode = cmd.getOptionValue("m", "cbc");
             String pass = cmd.getOptionValue("pass");
 
+            EncryptionModes encMode = null;
+            try {
+                encMode = EncryptionModes.fromString(mode);
+            } catch (IllegalArgumentException e) {
+                System.out.println(e.getMessage());
+            }
+
+            Encrypter encrypter = pass == null? new IdentityEncrypter() :
+            switch (alg) {
+                case "aes128" -> new AES(128, encMode, pass);
+                case "aes192" -> new AES(192, encMode, pass);
+                case "aes256" -> new AES(256, encMode, pass);
+//                case "3des" -> new DES(mode, pass);
+                default -> throw new IllegalArgumentException("Invalid encryption algorithm");
+            };
+
             StegoAlgorithm stegoAlgorithm = switch (stegAlgo) {
-                case "LSB1" -> new LSB(1, -1);
-                case "LSB4" -> new LSB(4, -1);
-                case "LSBI" -> new LSBI();
+                case "LSB1" -> new LSB(1, -1, encrypter);
+                case "LSB4" -> new LSB(4, -1, encrypter);
+                case "LSBI" -> new LSBI(encrypter);
                 default -> throw new IllegalArgumentException("Invalid steganography algorithm");
             };
 
@@ -56,7 +73,7 @@ public class Main {
             }
         } catch (ParseException e) {
             System.err.println("Failed to parse command line arguments");
-        } catch (IOException e) {
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
