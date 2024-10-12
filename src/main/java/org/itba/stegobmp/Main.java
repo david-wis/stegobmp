@@ -4,10 +4,10 @@ import org.apache.commons.cli.*;
 import org.itba.stegobmp.Embedders.LSB;
 import org.itba.stegobmp.Embedders.LSBI;
 import org.itba.stegobmp.Embedders.StegoAlgorithm;
-import org.itba.stegobmp.Encryption.*;
-
-import java.io.IOException;
-import java.util.HashMap;
+import org.itba.stegobmp.Encryption.AES;
+import org.itba.stegobmp.Encryption.DES;
+import org.itba.stegobmp.Encryption.Encrypter;
+import org.itba.stegobmp.Encryption.EncryptionModes;
 
 public class Main {
 
@@ -49,7 +49,7 @@ public class Main {
                 case "aes128" -> new AES(128, encMode, pass);
                 case "aes192" -> new AES(192, encMode, pass);
                 case "aes256" -> new AES(256, encMode, pass);
-//                case "3des" -> new DES(mode, pass);
+                case "3des" -> new DES(encMode, pass);
                 default -> throw new IllegalArgumentException("Invalid encryption algorithm");
             };
 
