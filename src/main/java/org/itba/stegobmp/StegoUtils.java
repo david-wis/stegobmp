@@ -8,4 +8,10 @@ public class StegoUtils {
         }
         return result;
     }
+    public static int byteArrayToInt(byte[] bytes, int offset) {
+        if (bytes.length < offset + 4) {
+            throw new IllegalArgumentException("Invalid byte array");
+        }
+        return ((bytes[offset] & 0xFF) << 24) | ((bytes[offset+1] & 0xFF) << 16) | ((bytes[offset+2] & 0xFF) << 8) | (bytes[offset+3] & 0xFF);
+    }
 }

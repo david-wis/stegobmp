@@ -15,14 +15,16 @@ import static java.util.Arrays.copyOfRange;
 public class AES implements Encrypter {
 
     private final int keyLen;
+    private static final int IV_LEN = 128;
     private final EncryptionModes encMode;
     private final String password;
-    private final static int iterations = 10000;
+    private static final int ITERATIONS = 10000;
+    private static final int BLOCK_SIZE = 16;
 
     public AES(int keyLenBits, EncryptionModes encryptionMode, String password) {
         if (keyLenBits != 128 && keyLenBits != 192 && keyLenBits != 256)
             throw new RuntimeException("Invalid AES bytes");
-        this.keyLen = keyLenBits / 8;
+        this.keyLen = keyLenBits;
         this.password = password;
         this.encMode = encryptionMode;
     }
@@ -42,7 +44,7 @@ public class AES implements Encrypter {
         // Se cifra
         byte[] cipheredText = aesCipher.doFinal(input);
         int cipherLen = cipheredText.length;
-        int paddedLen = cipherLen + 8 - (cipherLen % 8);
+        int paddedLen = cipherLen + (cipherLen % BLOCK_SIZE != 0? (BLOCK_SIZE - (cipherLen % BLOCK_SIZE)) : 0);
         byte[] lenBytes = StegoUtils.toByteArray(paddedLen);
 
         byte[] paddedCipheredText = new byte[4 + paddedLen];
@@ -65,7 +67,7 @@ public class AES implements Encrypter {
     }
 
     public int getIVLen() {
-        return this.encMode.needsIV()? keyLen : 0;
+        return this.encMode.needsIV()? IV_LEN : 0;
     }
 
 
@@ -73,15 +75,15 @@ public class AES implements Encrypter {
         byte[] salt = new byte[]{0,0,0,0,0,0,0,0};
 
         SecretKeyFactory skf = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
-        PBEKeySpec spec = new PBEKeySpec(password.toCharArray(), salt, iterations, keyLen + getIVLen());
+        PBEKeySpec spec = new PBEKeySpec(password.toCharArray(), salt, ITERATIONS, keyLen + getIVLen());
         byte[] randBytes = skf.generateSecret(spec).getEncoded();
 
-        byte[] keyBytes = copyOf(randBytes, keyLen);
+        byte[] keyBytes = copyOf(randBytes, keyLen / 8);
 
         Key key = new SecretKeySpec(keyBytes, "AES");
         IvParameterSpec iv = null;
         if (getIVLen() != 0) {
-            byte[] ivBytes = copyOfRange(randBytes, keyLen, randBytes.length);
+            byte[] ivBytes = copyOfRange(randBytes, keyLen / 8, randBytes.length);
             iv = new IvParameterSpec(ivBytes);
         }
 

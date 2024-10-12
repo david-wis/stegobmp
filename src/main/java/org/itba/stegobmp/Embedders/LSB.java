@@ -70,7 +70,7 @@ public class LSB implements StegoAlgorithm {
         System.arraycopy(fileExtensionBytes, 0, rawInputMessage, 4 + inputLen, fileExtensionBytes.length);
         rawInputMessage[rawInputMessage.length - 1] = 0;
 
-        byte[] inputMessage = encrypter.encrypt(rawInputMessage);
+        byte[] inputMessage = encrypter == null? rawInputMessage : encrypter.encrypt(rawInputMessage);
 
         Iterator<Integer> bitIterator = new Iterator<>() {
             int pos = 0;
@@ -126,30 +126,47 @@ public class LSB implements StegoAlgorithm {
 
     // Not used in LSBI, only for LSB1 and LSB4
     @Override
-    public void extract(String bitmapFile, String outputFile) throws IOException {
+    public void extract(String bitmapFile, String outputFile) throws IOException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, InvalidKeySpecException, InvalidKeyException {
         BmpStream bmpStream = new BmpStream(bitmapFile);
 
         byte[] bmpBytes = bmpStream.readAllBytes();
         byte[] inputLenBytes = new byte[4];
 
         readBytes(bmpBytes, 4, 0, inputLenBytes);
+        int contentLen = StegoUtils.byteArrayToInt(inputLenBytes, 0);
+        System.out.println("contentLen " + contentLen);
+        byte[] inputMessage = new byte[contentLen];
+        readBytes(bmpBytes, contentLen, LENGTH_LENGTH / n, inputMessage);
 
-        int inputLen = ((inputLenBytes[0] & 0xFF) << 24) | ((inputLenBytes[1] & 0xFF) << 16) | ((inputLenBytes[2] & 0xFF) << 8) | (inputLenBytes[3] & 0xFF);
-        System.out.println("inputLen " + inputLen);
-        byte[] inputMessage = new byte[inputLen];
-        readBytes(bmpBytes, inputLen, LENGTH_LENGTH / n, inputMessage);
+        FileData fd = encrypter == null? extractWithoutEncryption(bmpBytes, inputMessage, contentLen)
+                                        : extractWithEncryption(bmpBytes, inputMessage, contentLen);
+        System.out.println("Writing on: " + outputFile + fd.extension);
+        OutputStream output = new FileOutputStream(outputFile + fd.extension);
 
-        
-        byte[] extension = new byte[255];
-        int extensionLen = readBytes(bmpBytes, i -> i == 0 || extension[i-1] != 0, LENGTH_LENGTH / n + inputLen * carrierPerInput, extension) - 1;
-
-        String extensionStr = new String(extension, 0, extensionLen);
-        System.out.println(outputFile + extensionStr);
-        OutputStream output = new FileOutputStream(outputFile + extensionStr);
-
-        output.write(inputMessage);
+        output.write(fd.data);
         output.close();
         bmpStream.close();
     }
 
+    private FileData extractWithEncryption(byte[] bmpBytes, byte[] content, int contentLen) throws IOException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, InvalidKeySpecException, InvalidKeyException {
+        byte[] decipheredContent = encrypter.decrypt(content);
+
+        int inputLen = StegoUtils.byteArrayToInt(decipheredContent, 0);
+        byte[] inputMessage = new byte[inputLen];
+        System.out.println("inputLen " + inputLen);
+        System.arraycopy(decipheredContent, 4, inputMessage, 0, inputLen);
+        byte[] extension = new byte[decipheredContent.length-4-inputLen-1];
+        System.arraycopy(decipheredContent, 4 + inputLen, extension, 0, extension.length);
+        return new FileData(inputMessage, new String(extension));
+    }
+
+    private FileData extractWithoutEncryption(byte[] bmpBytes, byte[] content, int contentLen) {
+        byte[] extension = new byte[255];
+        int extensionLen = readBytes(bmpBytes, i -> i == 0 || extension[i-1] != 0, LENGTH_LENGTH / n + contentLen * carrierPerInput, extension) - 1;
+
+        String extensionStr = new String(extension, 0, extensionLen);
+        return new FileData(content, extensionStr);
+    }
+
+    private record FileData(byte[] data, String extension) {}
 }

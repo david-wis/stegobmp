@@ -44,7 +44,7 @@ public class Main {
                 System.out.println(e.getMessage());
             }
 
-            Encrypter encrypter = pass == null? new IdentityEncrypter() :
+            Encrypter encrypter = pass == null? null :
             switch (alg) {
                 case "aes128" -> new AES(128, encMode, pass);
                 case "aes192" -> new AES(192, encMode, pass);
@@ -67,6 +67,7 @@ public class Main {
                     stegoAlgorithm.extract(carrierFile, outputFile);
                 } catch (Exception e) {
                     System.err.println("Error extracting information: " + e.getMessage());
+                    throw e;
                 }
             } else {
                 System.err.println("Please provide the required '-embed' or '-extract' option");
