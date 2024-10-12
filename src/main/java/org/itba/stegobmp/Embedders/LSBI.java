@@ -2,6 +2,7 @@ package org.itba.stegobmp.Embedders;
 
 import org.itba.stegobmp.BmpStream;
 import org.itba.stegobmp.Encryption.Encrypter;
+import org.itba.stegobmp.StegoUtils;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.IllegalBlockSizeException;
@@ -49,8 +50,6 @@ public class LSBI implements StegoAlgorithm {
             output.write((firstBytes[i] & 0xFE) | ((stats[i] > 0) ? 0x1 : 0x0));
         }
         for (int i = 0; i < lsb1Result.length; i++) {
-//            if (i == 538799+58)
-//                System.out.println("Here");
             if (i % 3 == 1 || stats[(lsb1Result[i] & 0b00000110) >> 1] <= 0)
                 continue; // Skip red channels, or unchanged bytes
             lsb1Result[i] ^= 0x1;
@@ -89,9 +88,8 @@ public class LSBI implements StegoAlgorithm {
     }
 
     @Override
-    public void extract(String bitmapFile, String outputFile) throws IOException {
+    public void extract(String bitmapFile, String outputFile) throws IOException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, InvalidKeySpecException, InvalidKeyException {
         BmpStream bmpStream = new BmpStream(bitmapFile);
-
 
         byte[] bmpBytes = bmpStream.readAllBytes();
 
@@ -100,27 +98,45 @@ public class LSBI implements StegoAlgorithm {
             flipBits[i] = (bmpBytes[i] & 0x1) == 0 ? 0x0 : 0x1;
 
         int offset = 4;
-        byte[] inputLenBytes = new byte[4];
-        readBytes(bmpBytes, 4, offset, inputLenBytes, flipBits);
+        byte[] contentLenBytes = new byte[4];
+        readBytes(bmpBytes, 4, offset, contentLenBytes, flipBits);
 
-        int inputLen = ((inputLenBytes[0] & 0xFF) << 24) | ((inputLenBytes[1] & 0xFF) << 16) | ((inputLenBytes[2] & 0xFF) << 8) | (inputLenBytes[3] & 0xFF);
-        System.out.println("inputLen " + inputLen);
-        byte[] inputMessage = new byte[inputLen];
+        int contentLen = StegoUtils.byteArrayToInt(contentLenBytes, 0);
+        System.out.println("contentLen " + contentLen);
+        byte[] content = new byte[contentLen];
         offset += skipRed(LENGTH_LENGTH, offset);
-        readBytes(bmpBytes, inputLen, offset, inputMessage, flipBits);
+        readBytes(bmpBytes, contentLen, offset, content, flipBits);
         // B G R B | G -R B G -R B G -R B G -R B G -R B G -R B G -R B G -R B
 
-        byte[] extension = new byte[255];
-        offset += skipRed(inputLen * 8, offset);
-        int extensionLen = readBytes(bmpBytes, i -> i == 0 || extension[i-1] != 0, offset, extension, flipBits) - 1;
+        offset += skipRed(contentLen * 8, offset);
+        FileData fd = encrypter == null? extractWithoutEncryption(bmpBytes, content, offset, flipBits)
+                                        : extractWithEncryption(content);
 
-        String extensionStr = new String(extension, 0, extensionLen);
-        System.out.println(outputFile + extensionStr);
-        OutputStream output = new FileOutputStream(outputFile + extensionStr);
-        output.write(inputMessage);
+        System.out.println(outputFile + fd.extension());
+        OutputStream output = new FileOutputStream(outputFile + fd.extension());
+        output.write(fd.data());
         output.close();
         bmpStream.close();
-
-
     }
+
+    // TODO: Refactor this
+    private FileData extractWithEncryption(byte[] content) throws IOException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, InvalidKeySpecException, InvalidKeyException {
+        byte[] decipheredContent = encrypter.decrypt(content);
+
+        int inputLen = StegoUtils.byteArrayToInt(decipheredContent, 0);
+        byte[] inputMessage = new byte[inputLen];
+        System.out.println("inputLen " + inputLen);
+        System.arraycopy(decipheredContent, 4, inputMessage, 0, inputLen);
+        byte[] extension = new byte[decipheredContent.length-4-inputLen-1];
+        System.arraycopy(decipheredContent, 4 + inputLen, extension, 0, extension.length);
+        return new FileData(inputMessage, new String(extension));
+    }
+
+    private FileData extractWithoutEncryption(byte[] bmpBytes, byte[] content, int offset, int[] flipBits) {
+        byte[] extension = new byte[255];
+        int extensionLen = readBytes(bmpBytes, i -> i == 0 || extension[i-1] != 0, offset, extension, flipBits) - 1;
+        String extensionStr = new String(extension, 0, extensionLen);
+        return new FileData(content, extensionStr);
+    }
+
 }
