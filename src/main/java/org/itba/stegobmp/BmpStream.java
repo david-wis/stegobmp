@@ -9,7 +9,7 @@ public class BmpStream extends FileInputStream {
     private int fileSize;
 
     public BmpStream(String bmpFilePath) throws IOException {
-        super(getFileFromResources(bmpFilePath));
+        super(bmpFilePath);
 
         int bytesRead = this.read(header);
         if (bytesRead == -1) {
@@ -21,16 +21,6 @@ public class BmpStream extends FileInputStream {
         }
 
         this.fileSize =  ((header[5] & 0xFF) << 24) | ((header[4] & 0xFF) << 16) | ((header[3] & 0xFF) << 8) | (header[2] & 0xFF);
-    }
-
-    private static String getFileFromResources(String fileName) throws IOException {
-        ClassLoader classLoader = BmpStream.class.getClassLoader();
-
-        if (classLoader.getResource(fileName) != null) {
-            return classLoader.getResource(fileName).getPath();
-        } else {
-            throw new IOException("File not found in resources: " + fileName);
-        }
     }
 
     public byte[] getHeader() {
