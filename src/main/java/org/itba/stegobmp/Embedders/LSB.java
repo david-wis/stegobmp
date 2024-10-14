@@ -16,7 +16,8 @@ import java.util.Iterator;
 import java.util.function.Predicate;
 
 public class LSB implements StegoAlgorithm {
-    protected static final int LENGTH_LENGTH = 32;
+    protected static final int LENGTH_LENGTH_BITS = 32;
+
     private final int n, mask, carrierPerInput, skipN;
     protected final Encrypter encrypter;
 
@@ -28,6 +29,28 @@ public class LSB implements StegoAlgorithm {
         if (skipN < -1 || skipN > 2) throw new IllegalArgumentException("SkipN must be between 0 and 2 or -1");
         this.skipN = skipN;
         this.encrypter = encrypter;
+    }
+
+    @Override
+    public int getMaxBytes(String carrierFile) throws IOException {
+        BmpStream carrier = new BmpStream(carrierFile);
+        int carrierBytesCount = carrier.getFileSize() - 54;
+        carrier.close();
+        int capacityBytes = (carrierBytesCount * n - LENGTH_LENGTH_BITS - (encrypter != null? LENGTH_LENGTH_BITS : 0)) / 8;
+        return ((encrypter != null)? encrypter.roundDownToBlockSize(capacityBytes) : capacityBytes);
+    }
+//    (inputBytesCount * 8 + LENGTH_LENGTH_BITS) / n <= max
+//    <=> inputBytesCount * 8 + LENGTH_LENGTH_BITS <= max * n
+//    <=> inputBytesCount * 8 <= max * n - LENGTH_LENGTH_BITS
+//    <=> inputBytesCount <= (max * n - LENGTH_LENGTH_BITS) / 8
+
+
+    @Override
+    public boolean fileFitsInCarrier(String inputFile, String carrierFile) throws IOException {
+        InputStream input = new FileInputStream(inputFile);
+        int inputBytesCount = input.available();
+        input.close();
+        return inputBytesCount <= getMaxBytes(inputFile);
     }
 
     @Override
@@ -58,10 +81,6 @@ public class LSB implements StegoAlgorithm {
         byte[] inputLenBytes = StegoUtils.toByteArray(inputLen);
         byte[] fileExtensionBytes = fileExtension.getBytes();
         byte[] carrierBytes = carrier.readAllBytes();
-
-        if (inputLen + 4 + fileExtensionBytes.length > carrierBytes.length/8) {
-            throw new RuntimeException("Input message is too long for the carrier");// TODO: Change for LSB4 and LSBI?
-        }
 
         // the input message will be length || message || extension
         byte[] rawInputMessage = new byte[4 + inputLen + fileExtensionBytes.length + 1];
@@ -103,6 +122,8 @@ public class LSB implements StegoAlgorithm {
                 carrierBytes[i] = (byte) ((carrierBytes[i] & ~mask) | bit);
             }
         }
+
+        if (bitIterator.hasNext()) throw new IllegalArgumentException("Carrier file too small");
         return carrierBytes;
     }
 
@@ -146,7 +167,7 @@ public class LSB implements StegoAlgorithm {
         int contentLen = StegoUtils.byteArrayToInt(contentLenBytes, 0);
         System.out.println("contentLen " + contentLen);
         byte[] content = new byte[contentLen];
-        offset += toOffset(LENGTH_LENGTH / n, offset);
+        offset += toOffset(LENGTH_LENGTH_BITS / n, offset);
         readBytes(bmpBytes, contentLen, offset, content);
 
         offset += toOffset(contentLen * carrierPerInput, offset);

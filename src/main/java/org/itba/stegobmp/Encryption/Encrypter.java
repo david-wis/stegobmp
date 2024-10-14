@@ -24,6 +24,14 @@ public abstract class Encrypter {
     protected static final int ITERATIONS = 10000;
     protected static final int BLOCK_SIZE = 16;
 
+    public int getCipheredLength(int len) {
+        return len + ((encMode.needsPadding() && len % BLOCK_SIZE != 0)? (BLOCK_SIZE - (len % BLOCK_SIZE)) : 0);
+    }
+
+    public int roundDownToBlockSize(int len) {
+        return encMode.needsPadding()? len - (len % BLOCK_SIZE) : len;
+    }
+
     public Encrypter(String name, int keyLenBits, int ivLen, EncryptionModes encryptionMode, String password) {
         this.name = name;
         this.keyLen = keyLenBits;
@@ -38,7 +46,8 @@ public abstract class Encrypter {
         // Se cifra
         byte[] cipheredText = cipher.doFinal(input);
         int cipherLen = cipheredText.length;
-        int paddedLen = cipherLen + ((encMode.needsPadding() && cipherLen % BLOCK_SIZE != 0)? (BLOCK_SIZE - (cipherLen % BLOCK_SIZE)) : 0);
+        int paddedLen = getCipheredLength(cipherLen);
+        System.out.println("InputLen: " + input.length + " CipherLen: " + cipherLen + " PaddedLen: " + paddedLen);
         byte[] lenBytes = StegoUtils.toByteArray(paddedLen);
 
         byte[] paddedCipheredText = new byte[4 + paddedLen];

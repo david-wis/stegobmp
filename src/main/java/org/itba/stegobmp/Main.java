@@ -72,7 +72,11 @@ public class Main {
             };
 
             if (parsedArgs.containsKey("embed")) {
-                stegoAlgorithm.embedInFile(inputFile, carrierFile, outputFile);
+                if (stegoAlgorithm.fileFitsInCarrier(inputFile, carrierFile)) {
+                    stegoAlgorithm.embedInFile(inputFile, carrierFile, outputFile);
+                } else {
+                    System.err.println("File does not fit, max capacity for " + carrierFile + ": " + stegoAlgorithm.getMaxBytes(carrierFile) + " bytes");
+                }
             } else if (parsedArgs.containsKey("extract")) {
                 try {
                     stegoAlgorithm.extract(carrierFile, outputFile);

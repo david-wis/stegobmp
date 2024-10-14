@@ -21,6 +21,18 @@ public class LSBI extends LSB {
     }
 
     @Override
+    public int getMaxBytes(String carrierFile) throws IOException {
+        BmpStream carrier = new BmpStream(carrierFile);
+        int carrierBytesCount = carrier.getFileSize() - 54;
+        carrier.close();
+        int capacityBytes = (carrierBytesCount - LENGTH_LENGTH_BITS - (encrypter != null? LENGTH_LENGTH_BITS : 0) - 4) / 8;
+        return ((encrypter != null)? encrypter.roundDownToBlockSize(capacityBytes) : capacityBytes);
+    }
+//    inputBytesCount * 8 + 2 * LENGTH_LENGTH_BITS + 4 <= max
+//    <=> inputBytesCount * 8 <= max - 2 * LENGTH_LENGTH_BITS - 4
+//    <=> inputBytesCount <= (max - 2 * LENGTH_LENGTH_BITS - 4) / 8
+
+    @Override
     public void embedInFile(String inputFile, String carrierFile, String outputFile) throws IOException, InvalidAlgorithmParameterException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, InvalidKeySpecException, InvalidKeyException {
         InputStream input = new FileInputStream(inputFile);
         String fileExtension = inputFile.substring(inputFile.lastIndexOf('.'));
