@@ -50,7 +50,7 @@ public class LSB implements StegoAlgorithm {
         InputStream input = new FileInputStream(inputFile);
         int inputBytesCount = input.available();
         input.close();
-        return inputBytesCount <= getMaxBytes(inputFile);
+        return inputBytesCount <= getMaxBytes(carrierFile);
     }
 
     @Override
